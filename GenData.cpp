@@ -32,7 +32,6 @@ int main() {
 										// then append to it as though it's a vector, also we will have to perform some conversions before writing to file later
 	cv::Mat matTrainingImagesAsFlattenedFloats;
 
-	// possible chars we are interested in are digits 0 through 9 and capital letters A through Z, put these in vector intValidChars
 
 	std::string path = "dataset/";
 	fs::path temp;
