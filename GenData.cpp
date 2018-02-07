@@ -1,4 +1,3 @@
-
 #include<opencv2/core/core.hpp>
 #include<opencv2/highgui/highgui.hpp>
 #include<opencv2/imgproc/imgproc.hpp>
@@ -6,130 +5,110 @@
 #include<filesystem>
 #include<iostream>
 #include<vector>
+
 namespace fs = std::experimental::filesystem;
 
-
+// Minimum size of the contour area for the identified contour to be considered a character.
 const int MIN_CONTOUR_AREA = 100;
 
+// Resized size of the identified characters before being stored.
 const int RESIZED_IMAGE_WIDTH = 20;
 const int RESIZED_IMAGE_HEIGHT = 30;
 
-
 int main() {
 
-	cv::Mat imgTrainingNumbers;         // input image
-	cv::Mat imgGrayscale;               // 
-	cv::Mat imgBlurred;                 // declare various images
-	cv::Mat imgThresh;                  //
-	cv::Mat imgThreshCopy;              //
+	// Original image and all the different images created.
+	cv::Mat imgTrainingNumbers;
+	cv::Mat imgGrayscale;
+	cv::Mat imgBlurred;
+	cv::Mat imgThresh;
+	cv::Mat imgThreshCopy;
 
-	std::vector<std::vector<cv::Point> > ptContours;        // declare contours vector
-	std::vector<cv::Vec4i> v4iHierarchy;                    // declare contours hierarchy
+	//Decleration of vectors for contours.
+	std::vector<std::vector<cv::Point> > ptContours;
+	std::vector<cv::Vec4i> v4iHierarchy;
 
-	cv::Mat matClassificationInts;      // these are our training classifications, note we will have to perform some conversions before writing to file later
-
-										// these are our training images, due to the data types that the KNN object KNearest requires, we have to declare a single Mat,
-										// then append to it as though it's a vector, also we will have to perform some conversions before writing to file later
+	// Mats to store classifications and images for use in KNN.
+	cv::Mat matClassificationInts;
 	cv::Mat matTrainingImagesAsFlattenedFloats;
 
-
+	// Variables used to access the dataset images for learning.
 	std::string path = "dataset/";
-	fs::path temp;
 	std::string finalpath;
+
+	// Loop iterates through all the files in the dataset folder.
 	for (auto & p : fs::directory_iterator(path))
 	{
-		temp = p.path();
-		finalpath = temp.string();
-		imgTrainingNumbers = cv::imread(finalpath);         // read in training numbers image
+		finalpath = p.path().string();
+		imgTrainingNumbers = cv::imread(finalpath);
 
-
-		if (imgTrainingNumbers.empty()) {                               // if unable to open image
-			std::cout << "error: image not read from file\n\n";         // show error message on command line
-			return(0);                                                  // and exit program
+		if (imgTrainingNumbers.empty()) {                         
+			std::cout << "Training images not found.";     
+			return(0);                 
 		}
 
-		cv::cvtColor(imgTrainingNumbers, imgGrayscale, CV_BGR2GRAY);        // convert to grayscale
+		// Image converted to grayscale.
+		cv::cvtColor(imgTrainingNumbers, imgGrayscale, CV_BGR2GRAY);
 
-		cv::GaussianBlur(imgGrayscale,              // input image
-			imgBlurred,                             // output image
-			cv::Size(5, 5),                         // smoothing window width and height in pixels
-			0);                                     // sigma value, determines how much the image will be blurred, zero makes function choose the sigma value
+		// Gaussian blur to smooth out the image and remove any noise.
+		cv::GaussianBlur(imgGrayscale, imgBlurred, cv::Size(5, 5), 0);                                 
 
-													// filter image from grayscale to black and white
-		cv::adaptiveThreshold(imgBlurred,           // input image
-			imgThresh,                              // output image
-			255,                                    // make pixels that pass the threshold full white
-			cv::ADAPTIVE_THRESH_GAUSSIAN_C,         // use gaussian rather than mean, seems to give better results
-			cv::THRESH_BINARY_INV,                  // invert so foreground will be white, background will be black
-			11,                                     // size of a pixel neighborhood used to calculate threshold value
-			2);                                     // constant subtracted from the mean or weighted mean
+		// Adaptive threshold to convert grayscale image to black and white image.
+		cv::adaptiveThreshold(imgBlurred, imgThresh, 255, cv::ADAPTIVE_THRESH_GAUSSIAN_C, cv::THRESH_BINARY_INV, 11, 2);                                    
 
-		// cv::imshow("imgThresh", imgThresh);         // show threshold image for reference
+		// Create a copy of the previous image as the findContours step modifies the original image.
+		imgThreshCopy = imgThresh.clone();          
 
-		imgThreshCopy = imgThresh.clone();          // make a copy of the thresh image, this in necessary b/c findContours modifies the image
+		// Finds contours in the image to recognize all the characters.
+		cv::findContours(imgThreshCopy, ptContours, v4iHierarchy, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_SIMPLE);
 
-		cv::findContours(imgThreshCopy,             // input image, make sure to use a copy since the function will modify this image in the course of finding contours
-			ptContours,                             // output contours
-			v4iHierarchy,                           // output hierarchy
-			cv::RETR_EXTERNAL,                      // retrieve the outermost contours only
-			cv::CHAIN_APPROX_SIMPLE);               // compress horizontal, vertical, and diagonal segments and leave only their end points
+		// For loop that goes through every single character in the image and stores it in a matrix along with it's ASCII value.
+		for (int i = 0; i < ptContours.size(); i++) { 
+			if (cv::contourArea(ptContours[i]) > MIN_CONTOUR_AREA) { 
+				cv::Rect boundingRect = cv::boundingRect(ptContours[i]);   
 
-		for (int i = 0; i < ptContours.size(); i++) {                           // for each contour
-			if (cv::contourArea(ptContours[i]) > MIN_CONTOUR_AREA) {                // if contour is big enough to consider
-				cv::Rect boundingRect = cv::boundingRect(ptContours[i]);                // get the bounding rect
-
-				cv::rectangle(imgTrainingNumbers, boundingRect, cv::Scalar(0, 0, 255), 2);      // draw red rectangle around each contour as we ask user for input
-
-				cv::Mat matROI = imgThresh(boundingRect);           // get ROI image of bounding rect
+				// Gets the region of interest from the selected contours that we think are alphabets/numbers.
+				cv::Mat matROI = imgThresh(boundingRect);
 
 				cv::Mat matROIResized;
-				cv::resize(matROI, matROIResized, cv::Size(RESIZED_IMAGE_WIDTH, RESIZED_IMAGE_HEIGHT));     // resize image, this will be more consistent for recognition and storage
 
-				//cv::imshow("matROI", matROI);                               // show ROI image for reference
-				//cv::imshow("matROIResized", matROIResized);                 // show resized ROI image for reference
-				//cv::imshow("imgTrainingNumbers", imgTrainingNumbers);       // show training numbers image, this will now have red rectangles drawn on it
+				//Characters are resized so that they all remain the same width and height when stored as images.
+				cv::resize(matROI, matROIResized, cv::Size(RESIZED_IMAGE_WIDTH, RESIZED_IMAGE_HEIGHT));
 
-				int intChar = finalpath[8];           // get key press
+				// Saves the classification as the name of the file. E.G All A's are stored under A.jpg so all classifications will be saved as A.
+				int intChar = finalpath[8];
 
+				// Adds the name from the previous step in to the classifications mat to save later on.
+				matClassificationInts.push_back(intChar);
 
-				matClassificationInts.push_back(intChar);       // append classification char to integer list of chars
-
-				cv::Mat matImageFloat;                          // now add the training image (some conversion is necessary first) . . .
-				matROIResized.convertTo(matImageFloat, CV_32FC1);       // convert Mat to float
-
-				cv::Mat matImageFlattenedFloat = matImageFloat.reshape(1, 1);       // flatten
-
-				matTrainingImagesAsFlattenedFloats.push_back(matImageFlattenedFloat);       // add to Mat as though it was a vector, this is necessary due to the
-																							// data types that KNearest.train accepts
-			}   // end if
-		}   // end if
+				// Image is converted in to a float and then flattened so it can be stored in the images.xml file and be used in KNN.
+				cv::Mat matImageFloat;                         
+				matROIResized.convertTo(matImageFloat, CV_32FC1);
+				cv::Mat matImageFlattenedFloat = matImageFloat.reshape(1, 1);
+				matTrainingImagesAsFlattenedFloats.push_back(matImageFlattenedFloat);
+			}
+		}
 	}
 
-	std::cout << "training complete\n\n";
+	std::cout << "Training complete.";
 
-	// save classifications to file ///////////////////////////////////////////////////////
-
-	cv::FileStorage fsClassifications("classifications.xml", cv::FileStorage::WRITE);           // open the classifications file
-
-	if (fsClassifications.isOpened() == false) {                                                        // if the file was not opened successfully
-		std::cout << "error, unable to open training classifications file, exiting program\n\n";        // show error message
-		return(0);                                                                                      // and exit program
+	// Creation of the classifications.xml file which stores the ASCII values for each identified character.
+	cv::FileStorage fsClassifications("classifications.xml", cv::FileStorage::WRITE);
+	if (fsClassifications.isOpened() == false) {
+		std::cout << "Cannot write classifications.xml.";
+		return(0);
 	}
+	fsClassifications << "classifications" << matClassificationInts;
+	fsClassifications.release();
 
-	fsClassifications << "classifications" << matClassificationInts;        // write classifications into classifications section of classifications file
-	fsClassifications.release();                                            // close the classifications file
-
-																			// save training images to file ///////////////////////////////////////////////////////
-
-	cv::FileStorage fsTrainingImages("images.xml", cv::FileStorage::WRITE);         // open the training images file
-
-	if (fsTrainingImages.isOpened() == false) {                                                 // if the file was not opened successfully
-		std::cout << "error, unable to open training images file, exiting program\n\n";         // show error message
-		return(0);                                                                              // and exit program
+	// Creation of the images.xml file which stores the images as their pixel values.
+	cv::FileStorage fsTrainingImages("images.xml", cv::FileStorage::WRITE);
+	if (fsTrainingImages.isOpened() == false) {
+		std::cout << "Cannot write images.xml.";
+		return(0);
 	}
-
-	fsTrainingImages << "images" << matTrainingImagesAsFlattenedFloats;         // write training images into images section of images file
-	fsTrainingImages.release();                                                 // close the training images file
+	fsTrainingImages << "images" << matTrainingImagesAsFlattenedFloats;
+	fsTrainingImages.release();
 
 	return(0);
 }
