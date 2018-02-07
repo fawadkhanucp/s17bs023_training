@@ -42,47 +42,42 @@ int main() {
 		finalpath = p.path().string();
 		imgTrainingNumbers = cv::imread(finalpath);
 
-		if (imgTrainingNumbers.empty()) {                         
-			std::cout << "Training images not found.";     
-			return(0);                 
+		if (imgTrainingNumbers.empty()) {
+			std::cout << "Training images not found.";
+			return(0);
 		}
 
 		// Image converted to grayscale.
 		cv::cvtColor(imgTrainingNumbers, imgGrayscale, CV_BGR2GRAY);
 
 		// Gaussian blur to smooth out the image and remove any noise.
-		cv::GaussianBlur(imgGrayscale, imgBlurred, cv::Size(5, 5), 0);                                 
+		cv::GaussianBlur(imgGrayscale, imgBlurred, cv::Size(5, 5), 0);
 
 		// Adaptive threshold to convert grayscale image to black and white image.
-		cv::adaptiveThreshold(imgBlurred, imgThresh, 255, cv::ADAPTIVE_THRESH_GAUSSIAN_C, cv::THRESH_BINARY_INV, 11, 2);                                    
+		cv::adaptiveThreshold(imgBlurred, imgThresh, 255, cv::ADAPTIVE_THRESH_GAUSSIAN_C, cv::THRESH_BINARY_INV, 11, 2);
 
 		// Create a copy of the previous image as the findContours step modifies the original image.
-		imgThreshCopy = imgThresh.clone();          
+		imgThreshCopy = imgThresh.clone();
 
 		// Finds contours in the image to recognize all the characters.
 		cv::findContours(imgThreshCopy, ptContours, v4iHierarchy, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_SIMPLE);
 
 		// For loop that goes through every single character in the image and stores it in a matrix along with it's ASCII value.
-		for (int i = 0; i < ptContours.size(); i++) { 
-			if (cv::contourArea(ptContours[i]) > MIN_CONTOUR_AREA) { 
-				cv::Rect boundingRect = cv::boundingRect(ptContours[i]);   
-
+		for (int i = 0; i < ptContours.size(); i++) {
+			if (cv::contourArea(ptContours[i]) > MIN_CONTOUR_AREA) {
 				// Gets the region of interest from the selected contours that we think are alphabets/numbers.
+				cv::Rect boundingRect = cv::boundingRect(ptContours[i]);
 				cv::Mat matROI = imgThresh(boundingRect);
-
 				cv::Mat matROIResized;
 
 				//Characters are resized so that they all remain the same width and height when stored as images.
 				cv::resize(matROI, matROIResized, cv::Size(RESIZED_IMAGE_WIDTH, RESIZED_IMAGE_HEIGHT));
 
 				// Saves the classification as the name of the file. E.G All A's are stored under A.jpg so all classifications will be saved as A.
-				int intChar = finalpath[8];
-
-				// Adds the name from the previous step in to the classifications mat to save later on.
-				matClassificationInts.push_back(intChar);
+				matClassificationInts.push_back(finalpath[8]);
 
 				// Image is converted in to a float and then flattened so it can be stored in the images.xml file and be used in KNN.
-				cv::Mat matImageFloat;                         
+				cv::Mat matImageFloat;
 				matROIResized.convertTo(matImageFloat, CV_32FC1);
 				cv::Mat matImageFlattenedFloat = matImageFloat.reshape(1, 1);
 				matTrainingImagesAsFlattenedFloats.push_back(matImageFlattenedFloat);
